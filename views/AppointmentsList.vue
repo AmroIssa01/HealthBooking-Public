@@ -59,50 +59,59 @@ export default {
   methods: {
     fetchAppointments() {
       fetch("https://khhtfxau6k.execute-api.us-east-1.amazonaws.com/prod/appointments")
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+          return res.json();
+        })
         .then(data => {
-          const parsed = JSON.parse(data.body);
-          this.appointments = parsed;
+          console.log("Raw appointments response:", data);
+          
+          // Safely unpack data array variant structures
+          if (data.body) {
+            this.appointments = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
+          } else if (Array.isArray(data)) {
+            this.appointments = data;
+          }
+        })
+        .catch(err => {
+          console.error("Error listing admin data collections:", err);
         });
     },
     updateStatus(appointment, newStatus) {
-      // Log the full appointment object and its ID
-      console.log(" appointment (proxy):", appointment);
-      const cleanAppointment = JSON.parse(JSON.stringify(appointment));
-      console.log(" Clean appointment:", cleanAppointment);
-      console.log("appointmentId:", cleanAppointment.appointmentId);
-      console.log(" appointmentId (direct):", appointment.appointmentId);
+      console.log("Processing update for target ID:", appointment.appointmentId);
 
+      // Construct flat payload containing partition key identifier alongside parameters
+      const payload = { 
+        appointmentId: appointment.appointmentId,
+        status: newStatus 
+      };
+
+      // Base URL target mapped dynamically
       const url = `https://khhtfxau6k.execute-api.us-east-1.amazonaws.com/prod/appointments/${appointment.appointmentId}`;
-
-      const payload = { status: newStatus };
 
       fetch(url, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload) // Directly stringified single payload level
       })
-          .then(async res => {
-
-            const rawBody = await res.text();
-
-            if (!res.ok) {
-              throw new Error(`HTTP ${res.status}: ${rawBody}`);
-            }
-
-            return JSON.parse(rawBody);
-          })
-          .then(() => {
-            alert("Status updated!");
-          })
-          .catch(err => {
-            console.error(" Failed to update status:", err);
-            alert("Update failed. See console for details.");
-          });
+        .then(async res => {
+          const rawBody = await res.text();
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${rawBody}`);
+          }
+          return rawBody ? JSON.parse(rawBody) : {};
+        })
+        .then(() => {
+          alert("Status updated successfully!");
+          this.fetchAppointments(); // Re-trigger tracking array sync refresh
+        })
+        .catch(err => {
+          console.error("Failed to execute infrastructure update pipeline:", err);
+          alert("Update operational process failed. Review console logs.");
+        });
     }
-
-     }
+  }
 };
 </script>
