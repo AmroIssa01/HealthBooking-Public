@@ -47,35 +47,72 @@ export default {
   },
   mounted() {
     fetch("https://khhtfxau6k.execute-api.us-east-1.amazonaws.com/prod/slots")
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+        return res.json();
+      })
       .then(data => {
-        const parsed = JSON.parse(data.body);
-        this.slots = parsed.filter(s => !s.isBooked).map(s => s.slot);
+        console.log("Raw slots response:", data);
+        
+        // Handle variations in how Lambda Proxy integration formats the payload
+        let parsedSlots = [];
+        if (data.body) {
+          parsedSlots = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
+        } else if (Array.isArray(data)) {
+          parsedSlots = data;
+        }
+
+        // Safely extract names of unbooked slots
+        this.slots = parsedSlots.filter(s => !s.isBooked).map(s => s.slot);
+      })
+      .catch(err => {
+        console.error("Error fetching available slots:", err);
+        alert("Failed to load available time slots. See console for metadata details.");
       });
   },
   methods: {
     submitAppointment() {
+      // Create a clean flat object payload
       const payload = {
         patientName: this.name,
         symptoms: this.symptoms,
         slot: this.selectedSlot
       };
 
+      // Fixed: Send raw flat stringified JSON payload without nested wrappers
       fetch("https://khhtfxau6k.execute-api.us-east-1.amazonaws.com/prod/appointments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: JSON.stringify(payload) })
+        body: JSON.stringify(payload)
       })
-        .then(res => res.json())
+        .then(async res => {
+          const text = await res.text();
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
+          return text ? JSON.parse(text) : {};
+        })
         .then(() => {
-          alert("Appointment booked!");
+          alert("Appointment booked successfully!");
           this.name = "";
           this.symptoms = "";
           this.selectedSlot = "";
+          
+          // Instantly refresh available slots layout locally
+          return fetch("https://khhtfxau6k.execute-api.us-east-1.amazonaws.com/prod/slots");
+        })
+        .then(res => res ? res.json() : null)
+        .then(data => {
+          if (!data) return;
+          let parsedSlots = [];
+          if (data.body) {
+            parsedSlots = typeof data.body === "string" ? JSON.parse(data.body) : data.body;
+          } else if (Array.isArray(data)) {
+            parsedSlots = data;
+          }
+          this.slots = parsedSlots.filter(s => !s.isBooked).map(s => s.slot);
         })
         .catch(err => {
-          console.error("Error booking appointment:", err);
-          alert("Failed to book appointment.");
+          console.error("Error executing booking routing:", err);
+          alert("Failed to complete appointment booking.");
         });
     }
   }
