@@ -57,7 +57,7 @@
 </template>
 
 <script>
-const API_BASE = "https://khhtfxau6k.execute-api.us-east-1.amazonaws.com/prod;
+const API_BASE = "https://khhtfxau6k.execute-api.us-east-1.amazonaws.com/prod";
 
 export default {
   name: "AppointmentsList",
